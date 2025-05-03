@@ -13,14 +13,15 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 
 import { WalletHeader } from "@/components/wallet-header"
 
-// Update the API_URL to point to your backend server port
-const API_URL = "http://localhost:3000";
+// Update the API_URL to match your backend server location
+// You might need to adjust this based on your deployment
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 export default function SendPage() {
   const router = useRouter()
   const [recipient, setRecipient] = useState("")
   const [amount, setAmount] = useState("")
-  const [currency, setCurrency] = useState("BTC")
+  const [currency, setCurrency] = useState("MATIC")
   const [network, setNetwork] = useState("ethereum")
   const [gasOption, setGasOption] = useState("average")
   const [step, setStep] = useState(1)
@@ -46,173 +47,252 @@ export default function SendPage() {
   useEffect(() => {
     fetchNetworks()
     fetchTokens()
-    fetchBalance()
   }, [])
+
+  // When network changes, fetch the balance for that network
+  useEffect(() => {
+    if (network) {
+      fetchBalance()
+    }
+  }, [network])
 
   // Fetch networks from the API
   const fetchNetworks = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/blockchain/networks`)
-      if (!response.ok) throw new Error('Failed to fetch networks')
+      setError("")
+      const response = await fetch(`${API_URL}/api/blockchain/networks`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Add credentials if needed for authentication
+        // credentials: 'include',
+      })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Network fetch error:', errorText)
+        throw new Error('Failed to fetch networks')
+      }
+      
       const data = await response.json()
+      console.log('Fetched networks:', data)
+      
       setNetworks(data.networks || [])
       if (data.networks && data.networks.length > 0) {
         setNetwork(data.networks[0].id)
       }
     } catch (error) {
       console.error('Error fetching networks:', error)
-      setError('Failed to load networks. Please try again.')
+      setError('Failed to load networks. Please check your connection and try again.')
     }
   }
 
   // Fetch tokens from the API
   const fetchTokens = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/blockchain/tokens`)
-      if (!response.ok) throw new Error('Failed to fetch tokens')
-      const data = await response.json()
-      setAvailableTokens(data.tokens || [])
-    } catch (error) {
-      console.error('Error fetching tokens:', error)
-    }
-  }
-
-  // Fetch account balance
-  const fetchBalance = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/blockchain/balance?network=${network}`);
-      if (!response.ok) throw new Error('Failed to fetch balance');
-      const data = await response.json();
-      setNativeBalance(data.balance || 0);
-    } catch (error) {
-      console.error('Error fetching balance:', error);
-    }
-  };
-  
-
-  // When currency or recipient changes, update the gas estimate
-  useEffect(() => {
-    if (recipient && amount && Number(amount) > 0) {
-      estimateGasFee()
-    }
-  }, [currency, recipient, amount, network])
-
-
-
-
-
-  // Estimate gas fee for the transaction
- // Estimate gas fee for the transaction with improved error handling
-const estimateGasFee = async () => {
-  try {
-    setError("")
-    // For debugging
-    console.log("Starting gas estimation with:", { recipient, amount, currency, network })
-    
-    const isNativeToken = currency === "ETH" || currency === "BTC" // Assuming BTC is mapped to a wrapped version or for display purposes
-    
-    let endpoint = isNativeToken 
-      ? `${API_URL}/api/blockchain/gas/native`
-      : `${API_URL}/api/blockchain/gas/token`
-      
-    console.log("Using endpoint:", endpoint)
-    
-    const tokenAddress = isNativeToken 
-      ? null 
-      : availableTokens.find(token => token.symbol === currency)?.address
-
-    if (!isNativeToken && !tokenAddress) {
-      console.error('Token address not found for', currency)
-      setError(`Token address not found for ${currency}`)
-      return
-    }
-
-    const requestBody = isNativeToken
-      ? {
-          toAddress: recipient,
-          amount: amount,
-          network: network
-        }
-      : {
-          tokenAddress: tokenAddress,
-          toAddress: recipient,
-          amount: amount,
-          network: network,
-          tokenName: currency
-        }
-    
-    console.log("Request payload:", JSON.stringify(requestBody))
-
-    // Add better error handling with timeout
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
-    
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
+      setError("")
+      const response = await fetch(`${API_URL}/api/blockchain/tokens`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal
+        // Add credentials if needed for authentication
+        // credentials: 'include',
       })
-      
-      clearTimeout(timeoutId)
-      
-      console.log("Response status:", response.status)
       
       if (!response.ok) {
         const errorText = await response.text()
-        console.error("API error response:", errorText)
-        throw new Error(`Failed to estimate gas fee: ${response.status} ${errorText}`)
+        console.error('Token fetch error:', errorText)
+        throw new Error('Failed to fetch tokens')
       }
       
       const data = await response.json()
-      console.log("Gas estimation data:", data)
-      
-      // Update gas estimates based on API response
-      setGasEstimate({
-        slow: { 
-          fee: data.slowFee || "0.0001", 
-          timeEstimate: "~30 min" 
-        },
-        average: { 
-          fee: data.averageFee || "0.0005", 
-          timeEstimate: "~5 min" 
-        },
-        fast: { 
-          fee: data.fastFee || "0.001", 
-          timeEstimate: "~1 min" 
-        }
-      })
-    } catch (fetchError) {
-      clearTimeout(timeoutId)
-      if (fetchError.name === 'AbortError') {
-        console.error('Request timed out')
-        throw new Error('Request timed out. Please try again.')
-      }
-      throw fetchError
+      console.log('Fetched tokens:', data)
+      setAvailableTokens(data.tokens || [])
+    } catch (error) {
+      console.error('Error fetching tokens:', error)
+      setError('Failed to load tokens. Please check your connection and try again.')
     }
-  } catch (error) {
-    console.error('Error estimating gas fee:', error)
-    setError(error.message || 'Failed to estimate transaction fee. Please try again.')
-    
-    // Set fallback values when estimation fails
-    setGasEstimate({
-      slow: { fee: "0.0001", timeEstimate: "~30 min" },
-      average: { fee: "0.0005", timeEstimate: "~5 min" },
-      fast: { fee: "0.001", timeEstimate: "~1 min" }
-    })
   }
-}
 
+  // Fetch account balance with improved error handling
+  const fetchBalance = async () => {
+    if (!network) return
+    
+    try {
+      setError("")
+      console.log(`Fetching balance for network: ${network}`)
+      
+      const response = await fetch(`${API_URL}/api/blockchain/balance?network=${encodeURIComponent(network)}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Add credentials if needed for authentication
+        // credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Balance fetch error:', errorText)
+        throw new Error('Failed to fetch balance')
+      }
+      
+      const data = await response.json();
+      console.log('Fetched balance:', data)
+      setNativeBalance(data.balance || 0);
+    } catch (error) {
+      console.error('Error fetching balance:', error);
+      // Don't show error to user as this is not critical
+    }
+  };
+  
+  // When currency or recipient changes, update the gas estimate
+  useEffect(() => {
+    if (recipient && amount && Number(amount) > 0) {
+      // Debounce gas estimation to prevent too many requests
+      const timer = setTimeout(() => {
+        estimateGasFee()
+      }, 500)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [currency, recipient, amount, network])
 
+  // Estimate gas fee for the transaction with improved error handling
+  const estimateGasFee = async () => {
+    try {
+      setError("")
+      // For debugging
+      console.log("Starting gas estimation with:", { recipient, amount, currency, network })
+      
+      // Validate inputs
+      if (!recipient || !recipient.startsWith('0x') || recipient.length < 42) {
+        console.error('Invalid recipient address')
+        throw new Error('Please enter a valid wallet address')
+      }
+      
+      if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        console.error('Invalid amount')
+        throw new Error('Please enter a valid amount')
+      }
+      
+      const isNativeToken = currency === "ETH" || currency === "MATIC" 
+      
+      let endpoint = isNativeToken 
+        ? `${API_URL}/api/blockchain/gas/native`
+        : `${API_URL}/api/blockchain/gas/token`
+        
+      console.log("Using endpoint:", endpoint)
+      
+      let tokenAddress = null
+      if (!isNativeToken) {
+        const token = availableTokens.find(token => token.symbol.toUpperCase() === currency.toUpperCase())
+        tokenAddress = token?.address
+        
+        if (!tokenAddress) {
+          console.error('Token address not found for', currency)
+          throw new Error(`Token address not found for ${currency}`)
+        }
+      }
 
+      const requestBody = isNativeToken
+        ? {
+            toAddress: recipient,
+            amount: amount,
+            network: network
+          }
+        : {
+            tokenAddress: tokenAddress,
+            toAddress: recipient,
+            amount: amount,
+            network: network,
+            tokenName: currency
+          }
+      
+      console.log("Request payload:", JSON.stringify(requestBody))
 
+      // Add better error handling with longer timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+      
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        })
+        
+        
+        
+        clearTimeout(timeoutId)
+        
+        console.log("Response status:", response.status)
+        
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error("API error response:", errorText)
+          throw new Error(`Failed to estimate gas fee: ${response.status} ${errorText}`)
+        }
+        
+        const data = await response.json()
+        console.log("Gas estimation data:", data)
+        
+        // Update gas estimates based on API response
+        setGasEstimate({
+          slow: { 
+            fee: data.slowFee || "0.0001", 
+            timeEstimate: "~30 min" 
+          },
+          average: { 
+            fee: data.averageFee || "0.0005", 
+            timeEstimate: "~5 min" 
+          },
+          fast: { 
+            fee: data.fastFee || "0.001", 
+            timeEstimate: "~1 min" 
+          }
+        })
+      } catch (fetchError) {
+        clearTimeout(timeoutId)
+        if (fetchError.name === 'AbortError') {
+          console.error('Request timed out')
+          throw new Error('Gas estimation request timed out. The network might be congested.')
+        }
+        throw fetchError
+      }
+    } catch (error) {
+      console.error('Error estimating gas fee:', error)
+      setError(error.message || 'Failed to estimate transaction fee. Please try again.')
+      
+      // Set fallback values when estimation fails
+      setGasEstimate({
+        slow: { fee: "0.0001", timeEstimate: "~30 min" },
+        average: { fee: "0.0005", timeEstimate: "~5 min" },
+        fast: { fee: "0.001", timeEstimate: "~1 min" }
+      })
+    }
+  }
 
-  // Handle send transaction
+  // Handle send transaction with improved error handling
   const handleSend = async () => {
     if (step === 1) {
+      // Validate inputs before moving to confirmation step
+      if (!recipient || !recipient.startsWith('0x')) {
+        setError('Please enter a valid wallet address')
+        return
+      }
+      
+      if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        setError('Please enter a valid amount')
+        return
+      }
+      
+      setError("")
       setStep(2)
       return
     }
@@ -221,19 +301,25 @@ const estimateGasFee = async () => {
       setIsLoading(true)
       setError("")
       
-      const isNativeToken = currency === "ETH" || currency === "BTC" // Assuming BTC is mapped to a wrapped version or for display purposes
+      if (!password) {
+        throw new Error('Please enter your wallet password')
+      }
+      
+      const isNativeToken = currency === "ETH" || currency === "MATIC"
       
       // Fix the API endpoint paths to include the full URL
       let endpoint = isNativeToken 
         ? `${API_URL}/api/blockchain/transfer/native`
         : `${API_URL}/api/blockchain/token/transfer`
         
-      const tokenAddress = isNativeToken 
-        ? null 
-        : availableTokens.find(token => token.symbol === currency)?.address
-
-      if (!isNativeToken && !tokenAddress) {
-        throw new Error(`Token address not found for ${currency}`)
+      let tokenAddress = null
+      if (!isNativeToken) {
+        const token = availableTokens.find(token => token.symbol.toUpperCase() === currency.toUpperCase())
+        tokenAddress = token?.address
+        
+        if (!tokenAddress) {
+          throw new Error(`Token address not found for ${currency}`)
+        }
       }
 
       // Prepare gas settings based on the selected option
@@ -258,34 +344,65 @@ const estimateGasFee = async () => {
             ...gasSettings
           }
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
+      console.log("Sending transaction request to:", endpoint)
+      console.log("Request payload (without password):", {
+        ...requestBody,
+        password: "[REDACTED]"
       })
 
-      const data = await response.json()
+      // Add timeout handling for transaction requests
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout for transactions
+      
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        })
+        
+        
 
-      if (!response.ok) {
-        throw new Error(data.message || 'Transaction failed')
+        
+        clearTimeout(timeoutId)
+        
+        // Handle non-JSON responses gracefully
+        let data
+        const contentType = response.headers.get("content-type")
+        if (contentType && contentType.includes("application/json")) {
+          data = await response.json()
+        } else {
+          const text = await response.text()
+          data = { message: text }
+        }
+
+        if (!response.ok) {
+          throw new Error(data.message || `Transaction failed with status ${response.status}`)
+        }
+        
+        setSuccess(`Transaction sent successfully! Transaction hash: ${data.txHash}`)
+        
+        // Save recipient to recent recipients
+        const recipientName = recipient.substring(0, 6) + '...' + recipient.substring(recipient.length - 4)
+        setRecentRecipients(prev => [
+          { name: recipientName, address: recipient },
+          ...prev.filter(r => r.address !== recipient).slice(0, 4) // Keep only the 5 most recent, avoid duplicates
+        ])
+        
+        // Wait a bit before redirecting to dashboard
+        setTimeout(() => {
+          router.push("/dashboard")
+        }, 3000)
+      } catch (fetchError) {
+        clearTimeout(timeoutId)
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Transaction request timed out. The network might be congested.')
+        }
+        throw fetchError
       }
-      
-      setSuccess(`Transaction sent successfully! Transaction hash: ${data.txHash}`)
-      
-      // Save recipient to recent recipients (in a real app, you'd store this in backend/local storage)
-      const recipientName = recipient.substring(0, 6) + '...' + recipient.substring(recipient.length - 4)
-      setRecentRecipients(prev => [
-        { name: recipientName, address: recipient },
-        ...prev.slice(0, 4) // Keep only the 5 most recent
-      ])
-      
-      // Wait a bit before redirecting to dashboard
-      setTimeout(() => {
-        router.push("/dashboard")
-      }, 2000)
-      
     } catch (error) {
       console.error('Error sending transaction:', error)
       setError(error.message || 'Failed to send transaction. Please try again.')
@@ -296,10 +413,15 @@ const estimateGasFee = async () => {
 
   const handleSetMaxAmount = () => {
     if (nativeBalance > 0) {
-      // Subtract the gas fee to avoid "insufficient funds" errors
-      const gasFee = Number(gasEstimate[gasOption]?.fee || 0)
-      const maxAmount = Math.max(0, nativeBalance - gasFee).toFixed(6)
-      setAmount(maxAmount)
+      // For native tokens, subtract the gas fee
+      if (currency === "ETH" || currency === "MATIC") {
+        const gasFee = Number(gasEstimate[gasOption]?.fee || 0)
+        const maxAmount = Math.max(0, nativeBalance - gasFee).toFixed(6)
+        setAmount(maxAmount)
+      } else {
+        // For non-native tokens, we can use the full balance
+        setAmount(nativeBalance.toFixed(6))
+      }
     }
   }
 
@@ -372,7 +494,7 @@ const estimateGasFee = async () => {
                           <SelectValue placeholder="Select currency" />
                         </SelectTrigger>
                         <SelectContent className="bg-cream border-mauve/10">
-                          <SelectItem value="BTC">Bitcoin (BTC)</SelectItem>
+                          <SelectItem value="MATIC">Polygon (MATIC)</SelectItem>
                           <SelectItem value="ETH">Ethereum (ETH)</SelectItem>
                           <SelectItem value="USDT">Tether (USDT)</SelectItem>
                           <SelectItem value="USDC">USD Coin (USDC)</SelectItem>
@@ -397,11 +519,17 @@ const estimateGasFee = async () => {
                           <SelectValue placeholder="Select network" />
                         </SelectTrigger>
                         <SelectContent className="bg-cream border-mauve/10">
-                          {networks.map(net => (
-                            <SelectItem key={net.id} value={net.id}>
-                              {net.name}
+                          {networks.length > 0 ? (
+                            networks.map(net => (
+                              <SelectItem key={net.id} value={net.id}>
+                                {net.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="loading" disabled>
+                              Loading networks...
                             </SelectItem>
-                          ))}
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
@@ -434,7 +562,7 @@ const estimateGasFee = async () => {
                     </div>
                     <div className="text-sm text-mauve">
                       ≈ $
-                      {currency === "BTC"
+                      {currency === "MATIC"
                         ? (Number.parseFloat(amount || "0") * 18000).toFixed(2)
                         : (Number.parseFloat(amount || "0") * 1800).toFixed(2)}{" "}
                       USD
@@ -496,7 +624,7 @@ const estimateGasFee = async () => {
                       </div>
                       <div className="text-sm text-mauve">
                         ≈ $
-                        {currency === "BTC"
+                        {currency === "MATIC"
                           ? (Number.parseFloat(amount) * 18000).toFixed(2)
                           : (Number.parseFloat(amount) * 1800).toFixed(2)}{" "}
                         USD
@@ -522,7 +650,7 @@ const estimateGasFee = async () => {
                       </div>
                       <div className="text-xs text-mauve">
                         ≈ $
-                        {currency === "BTC"
+                        {currency === "MATIC"
                           ? (Number.parseFloat(gasEstimate[gasOption].fee) * 18000).toFixed(2)
                           : (Number.parseFloat(gasEstimate[gasOption].fee) * 1800).toFixed(2)}{" "}
                         USD

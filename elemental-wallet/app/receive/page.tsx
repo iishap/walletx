@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 
 import { WalletHeader } from "@/components/wallet-header"
 
-// API service
+// API service - ensure this matches your backend
 const API_URL = "http://localhost:3000";
 
 export default function ReceivePage() {
@@ -20,55 +20,110 @@ export default function ReceivePage() {
   const [recentDeposits, setRecentDeposits] = useState([])
   const [error, setError] = useState(null)
 
-  // Fetch ETH wallet address only
+  // Fetch ETH wallet address
   useEffect(() => {
     const fetchETHAddress = async () => {
       try {
         setIsLoading(true)
         const response = await axios.get(`${API_URL}/api/wallet/accounts`)
         
-        // Find ETH address from accounts or use the first account
-        if (response.data && response.data.length > 0) {
-          // Try to find an ETH account first
-          const ethAccount = response.data.find(account => 
-            account.type === 'ethereum' || account.currency === 'ETH'
-          )
-          
-          // Use the found ETH account or fall back to the first account
-          setWalletAddress(ethAccount ? ethAccount.address : response.data[0].address)
+        // Debug the response to understand its structure
+        console.log("API Response:", response.data)
+        
+        // More flexible handling of the response
+        // Try different possible formats that could be returned
+        let addressToUse = "";
+        
+        if (response.data) {
+          // Case 1: If response.data is an array of account objects with address property
+          if (Array.isArray(response.data) && response.data.length > 0) {
+            // Try to find an ETH account first
+            const ethAccount = response.data.find(account => 
+              (account.type && account.type.toLowerCase() === 'ethereum') || 
+              (account.currency && account.currency.toLowerCase() === 'eth')
+            );
+            
+            // Use found ETH account or fall back to first account
+            if (ethAccount && ethAccount.address) {
+              addressToUse = ethAccount.address;
+            } else if (response.data[0].address) {
+              addressToUse = response.data[0].address;
+            }
+          } 
+          // Case 2: If response.data is a single account object
+          else if (typeof response.data === 'object' && response.data.address) {
+            addressToUse = response.data.address;
+          }
+          // Case 3: If response.data has an 'accounts' property that is an array
+          else if (typeof response.data === 'object' && Array.isArray(response.data.accounts) && response.data.accounts.length > 0) {
+            const ethAccount = response.data.accounts.find(account => 
+              (account.type && account.type.toLowerCase() === 'ethereum') || 
+              (account.currency && account.currency.toLowerCase() === 'eth')
+            );
+            
+            if (ethAccount && ethAccount.address) {
+              addressToUse = ethAccount.address;
+            } else if (response.data.accounts[0].address) {
+              addressToUse = response.data.accounts[0].address;
+            }
+          }
+          // Case 4: If response.data is a string (directly the address)
+          else if (typeof response.data === 'string' && response.data.startsWith('0x')) {
+            addressToUse = response.data;
+          }
+          // Case 5: If response.data.address is a string directly
+          else if (typeof response.data === 'object' && typeof response.data.address === 'string') {
+            addressToUse = response.data.address;
+          }
         }
-        setIsLoading(false)
+        
+        if (addressToUse) {
+          console.log("Using address:", addressToUse);
+          setWalletAddress(addressToUse);
+          setIsLoading(false);
+        } else {
+          console.error("No wallet address found in response:", response.data);
+          setError("No wallet accounts found. Please create an account first.");
+          setIsLoading(false);
+        }
       } catch (err) {
-        console.error("Error fetching ETH address:", err)
-        setError("Failed to load wallet address. Please try again.")
-        setIsLoading(false)
+        console.error("Error fetching ETH address:", err);
+        setError("Failed to load wallet address. Please check your network connection and try again.");
+        setIsLoading(false);
       }
-    }
+    };
 
-    fetchETHAddress()
+    fetchETHAddress();
   }, [])
 
   // Fetch transaction history
   useEffect(() => {
     const fetchTransactionHistory = async () => {
       try {
+        if (!walletAddress) return
+        
+        console.log("Fetching history for address:", walletAddress)
         const response = await axios.get(`${API_URL}/api/blockchain/history`)
+        console.log("History response:", response.data)
         
         // Filter only incoming transactions (deposits)
-        const deposits = response.data
-          .filter(tx => tx.to && tx.to.toLowerCase() === walletAddress.toLowerCase())
-          .map(tx => ({
-            amount: tx.value || "0",
-            symbol: "ETH", // Only show ETH transactions
-            from: tx.from,
-            timestamp: new Date(tx.timestamp * 1000).toLocaleDateString(),
-            hash: tx.hash
-          }))
-          .slice(0, 5) // Show only the most recent 5 deposits
-        
-        setRecentDeposits(deposits)
+        if (Array.isArray(response.data)) {
+          const deposits = response.data
+            .filter(tx => tx.to && tx.to.toLowerCase() === walletAddress.toLowerCase())
+            .map(tx => ({
+              amount: tx.value || "0",
+              symbol: tx.tokenSymbol || "ETH", // Use token symbol if available, otherwise assume ETH
+              from: tx.from,
+              timestamp: tx.timestamp ? new Date(tx.timestamp * 1000).toLocaleDateString() : "Unknown date",
+              hash: tx.hash
+            }))
+            .slice(0, 5) // Show only the most recent 5 deposits
+          
+          setRecentDeposits(deposits)
+        }
       } catch (err) {
         console.error("Error fetching transaction history:", err)
+        // Don't set error state here to avoid overriding the main address error
       }
     }
 
@@ -128,14 +183,19 @@ export default function ReceivePage() {
                   ) : (
                     <div className="text-center w-full">
                       <div className="text-sm text-mauve mb-2">Your ETH Address</div>
-                      <div className="text-sm font-medium break-all bg-white p-6 rounded-xl text-dark-brown">
+                      <div className="text-sm font-medium break-all bg-white p-6 rounded-xl text-dark-brown mb-4">
                         {walletAddress || "No address available"}
                       </div>
+                      {walletAddress && (
+                        <div className="text-xs text-mauve">
+                          You can receive ETH and any ERC-20 tokens with this address
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
 
-                <div className="flex justify-center">
+                <div className="flex justify-center space-x-4">
                   <Button
                     className="bg-mauve hover:bg-brown text-cream rounded-xl h-12 px-8"
                     variant="default"
@@ -144,6 +204,25 @@ export default function ReceivePage() {
                   >
                     <Copy className="mr-2 h-4 w-4" />
                     {copied ? "Address Copied!" : "Copy Address"}
+                  </Button>
+                  
+                  <Button
+                    className="bg-brown hover:bg-mauve text-cream rounded-xl h-12 px-8"
+                    variant="default"
+                    onClick={() => {
+                      if (navigator.share) {
+                        navigator.share({
+                          title: 'My ETH Address',
+                          text: walletAddress,
+                        })
+                      } else {
+                        handleCopyAddress()
+                      }
+                    }}
+                    disabled={isLoading || !walletAddress}
+                  >
+                    <Share2 className="mr-2 h-4 w-4" />
+                    Share
                   </Button>
                 </div>
               </div>
@@ -160,6 +239,7 @@ export default function ReceivePage() {
                 <li>• Always verify the address is correct</li>
                 <li>• Different currencies may have different addresses</li>
                 <li>• Transactions may take time to confirm</li>
+                <li>• Check transaction status in history</li>
               </ul>
             </div>
 

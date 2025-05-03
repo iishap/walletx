@@ -63,7 +63,7 @@ const fetchTransactionHistory = async () => {
   }
 };
 
-const addCustomToken = async (tokenAddress, network = "ethereum") => {
+const addCustomToken = async (tokenAddress: network = "ethereum") => {
   try {
     const response = await fetch(`${API_URL}/blockchain/token/add`, {
       method: 'POST',
@@ -287,6 +287,7 @@ export default function DashboardPage() {
         const symbol = networkData.nativeBalance.symbol;
         const balance = parseFloat(networkData.nativeBalance.balance);
         const rate = rates[symbol] || 1;
+        console.log(balance);
         total += balance * rate;
       }
       
@@ -313,7 +314,7 @@ export default function DashboardPage() {
         // Update accounts and active account
         const updatedAccounts = await fetchAccounts();
         if (updatedAccounts.success && updatedAccounts.accounts) {
-          setAccounts(updatedAccounts.accounts);
+          accounts(updatedAccounts.accounts);
           
           if (updatedAccounts.currentAccount) {
             setActiveAccount(updatedAccounts.currentAccount);
@@ -478,7 +479,7 @@ export default function DashboardPage() {
                   </Button>
                 </div>
                 
-                {/* Network selector */}
+                {/* Network    */}
                 <div className="mt-2 overflow-x-auto">
                   <div className="flex space-x-2 pb-2">
                     {getNetworks().map(network => (
@@ -493,7 +494,8 @@ export default function DashboardPage() {
                         }`}
                         onClick={() => handleNetworkChange(network.id)}
                       >
-                        {network.name.split(' ')[0]}
+                        {network.name}
+                        {/* {network.name.split(' ')[0]} */}
                       </Button>
                     ))}
                   </div>
@@ -568,29 +570,31 @@ export default function DashboardPage() {
 
             {/* QR Code card */}
             <div className="bg-white rounded-3xl p-6 shadow-md flex flex-col items-center justify-center">
-              <h3 className="text-xl font-bold text-dark-brown mb-4">Receive Crypto</h3>
-              <QRCodeDisplay 
-                address={activeAccount?.address || "Loading address..."} 
-                size={150} 
-              />
-              <div className="mt-4 text-center">
-                <div className="text-xs text-mauve mb-1">Your Wallet Address</div>
-                <div className="text-sm font-medium text-dark-brown flex items-center">
-                  {activeAccount
-                    ? `${activeAccount.address.substring(0, 12)}...${activeAccount.address.substring(activeAccount.address.length - 4)}`
-                    : "Loading address..."}
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-6 w-6 ml-1"
-                    onClick={() => activeAccount && copyToClipboard(activeAccount.address)}
-                  >
-                    <Copy className="h-3 w-3" />
-                    <span className="sr-only">Copy address</span>
-                  </Button>
-                </div>
-              </div>
-            </div>
+            <h3 className="text-xl font-bold text-dark-brown mb-4">Receive Crypto</h3>
+            <QRCodeDisplay 
+    // Ensure this matches exactly with the address used on the Receive page
+    // If the Receive page uses a different source, use that same source here
+            address={activeAccount?.address || "Loading address..."} 
+            size={150} 
+            />
+  <div className="mt-4 text-center">
+    <div className="text-xs text-mauve mb-1">Your Wallet Address</div>
+    <div className="text-sm font-medium text-dark-brown flex items-center">
+      {activeAccount
+        ? `${activeAccount.address.substring(0, 12)}...${activeAccount.address.substring(activeAccount.address.length - 4)}`
+        : "Loading address..."}
+      <Button 
+        variant="ghost" 
+        size="icon" 
+        className="h-6 w-6 ml-1"
+        onClick={() => activeAccount && copyToClipboard(activeAccount.address)}
+      >
+        <Copy className="h-3 w-3" />
+        <span className="sr-only">Copy address</span>
+      </Button>
+    </div>
+  </div>
+</div>
 
             {/* Recent Transactions card */}
             <div className="sm:col-span-2 bg-white rounded-3xl p-6 shadow-md">
